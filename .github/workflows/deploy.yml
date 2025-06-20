@@ -41,34 +41,42 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for jekyll-github-metadata
 
-      - name: Setup Ruby
+      - name: Setup Ruby and Gems
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.3"
+          ruby-version: "3.1"  # Matches GitHub Pages' Ruby version
           bundler-cache: true
+          cache-version: 2
 
-      - name: Setup Python (for nbconvert)
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"  # More stable than 3.13 for Jekyll
-          cache: "pip"
-
-      - name: Install system dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick poppler-utils
+          sudo apt-get install -y \
+            imagemagick \
+            poppler-utils \
+            libxml2-dev \
+            libxslt1-dev
+          # For jekyll-jupyter-notebook
+          python3 -m pip install --upgrade pip
+          python3 -m pip install nbconvert==6.5.4
 
-      - name: Build site
+      - name: Build Site with Plugins
         env:
           JEKYLL_ENV: production
+          NOKOGIRI_USE_SYSTEM_LIBRARIES: true  # For nokogiri performance
         run: |
-          bundle exec jekyll build --trace
+          bundle config set force_ruby_platform true  # For platform-specific gems
+          bundle install
+          bundle exec jekyll build --trace --verbose
 
-      - name: Optimize assets
+      - name: Optimize Assets
         run: |
-          npm install -g purgecss@5.0.0
+          npm install -g purgecss@5.0.0 terser@5.26.0
           purgecss -c purgecss.config.js
+          find _site -name "*.js" -exec terser {} -o {} \;
           find _site -name "*.html" -exec gzip -k {} \;
 
       - name: Deploy to GitHub Pages
@@ -76,4 +84,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./_site
-          force_orphan: true  # Clean old files
+          force_orphan: true
+          keep_files: false
